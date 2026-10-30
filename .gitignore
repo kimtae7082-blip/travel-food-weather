@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.db
+*.db-journal
+# 이전 설정 파일이 다시 생겨도 키가 Git에 포함되지 않도록 제외합니다.
+settings.local.json
+.env
+.env.*
+!.env.example
