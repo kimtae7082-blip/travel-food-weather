@@ -125,6 +125,13 @@ def status():
     return providers.connection_status()
 
 
+@app.get("/api/hotel-links")
+def hotel_links(region: str = Query(default="강원", max_length=20), q: str = Query(default="", max_length=100)):
+    if region != "전체" and region not in providers.CENTERS:
+        raise HTTPException(422, "지원하는 지역을 선택해 주세요.")
+    return providers.hotel_app_links(region, q)
+
+
 @app.get("/api/hotel-prices")
 def hotel_prices(
     checkin: date, checkout: date,

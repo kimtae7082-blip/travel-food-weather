@@ -44,7 +44,7 @@ class TravelTests(unittest.TestCase):
     def test_invalid_and_honest_status(self):
         self.assertEqual(self.client.get("/api/places?category=wrong").status_code,422)
         self.assertEqual(self.client.get("/api/places?audience=wrong").status_code,422)
-        with patch("providers.request_json", side_effect=main.providers.ProviderError("연결 실패")):
+        with patch("providers.settings", return_value={"OPENWEATHER_API_KEY":"fake"}), patch("providers.request_json", side_effect=main.providers.ProviderError("연결 실패")):
             main.providers._weather_cache.clear()
             weather = self.client.get("/api/weather?region=부산").json()
         self.assertEqual(weather["status"], "unavailable")
@@ -55,11 +55,17 @@ class TravelTests(unittest.TestCase):
             self.assertIsNone(item["checked_at"])
 
     def test_live_missing_key_does_not_fall_back_to_demo(self):
-        with patch("providers.settings", return_value={"KAKAO_REST_API_KEY":""}):
+        with patch("providers.settings", return_value={"TOUR_API_KEY":""}):
             data = self.client.get("/api/places").json()
         self.assertEqual(data["status"], "needs_key")
         self.assertEqual(data["items"], [])
         self.assertEqual(data["mode"], "live")
+
+    def test_hotel_app_links(self):
+        data=self.client.get('/api/hotel-links?region=강원').json()
+        self.assertEqual(data['status'],'external_app')
+        self.assertEqual(data['query'],'강릉 숙소')
+        self.assertEqual(self.client.get('/api/hotel-links?region=wrong').status_code,422)
 
     def test_hotel_input_validation(self):
         for query in ["checkin=2020-01-01&checkout=2020-01-02", "checkin=bad&checkout=bad",
