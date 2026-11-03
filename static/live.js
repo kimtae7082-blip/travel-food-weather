@@ -38,7 +38,12 @@ function card(p) {
   const body=el('div','card-body');
   body.append(el('p','card-location',`${p.region} · ${p.city}`),el('h3','',p.name),el('p','card-description',p.description),el('p','card-tags',p.tags.split('·').map(t=>`#${t.trim()}`).join(' ')));
   const bottom=el('div','card-bottom'), button=el('button','detail-button','상세 정보 ↗');
-  button.addEventListener('click',()=>details(p));
+  button.addEventListener('click',event=>{event.stopPropagation();details(p);});
+  if(p.category!=='stay'){
+    article.classList.add('clickable-card');article.tabIndex=0;article.setAttribute('aria-label',`${p.name} 상세정보 열기`);
+    article.addEventListener('click',event=>{if(!event.target.closest('a,button'))details(p);});
+    article.addEventListener('keydown',event=>{if(event.target===article&&(event.key==='Enter'||event.key===' ')){event.preventDefault();details(p);}});
+  }
   bottom.append(el('span','',p.is_demo?'예시 · 이용 조건 미확인':'출처: 한국관광공사'));if(p.category!=='stay')bottom.append(button);
   if(p.category==='stay'){const more=el('button','outline-button stay-more','더보기');more.addEventListener('click',()=>stayMore(p));body.append(more);if(!p.is_demo){const app=link('https://www.agoda.com/ko-kr/','아고다 열기 ↗');if(app)body.append(app);}}
   body.append(bottom); article.append(picture,attribution,body); return article;
@@ -61,6 +66,7 @@ function details(p) {
   $('#detail').showModal();
 }
 
+function stayText(value){return !value||value==='미제공'?'등록된 정보가 없어요':String(value).replaceAll('미제공','등록된 정보가 없어요');}
 function staySection(title){const section=el('section','stay-section');section.append(el('h3','',title));$('#stay-extra').append(section);return section;}
 async function stayMore(p){
   const request=++detailNumber, dialog=$('#detail');dialog.classList.add('stay-dialog');
@@ -72,24 +78,24 @@ async function stayMore(p){
     const response=await fetch(`/api/stays/${encodeURIComponent(p.content_id)}`);if(!response.ok)throw new Error();
     const data=await response.json();if(request!==detailNumber||!dialog.open)return;
     if(!['live','partial'].includes(data.status))throw new Error(data.message||'상세 정보 미제공');
-    $('#detail-name').textContent=data.name||p.name;$('#detail-description').textContent=data.overview;
+    $('#detail-name').textContent=data.name||p.name;$('#detail-description').textContent=stayText(data.overview);
     const basic=staySection('숙소 기본 정보');const basics=el('dl','stay-fields');
-    [['주소',data.address||'미제공'],['문의 전화',data.phone||'미제공']].forEach(([k,v])=>basics.append(el('dt','',k),el('dd','',v)));basic.append(basics);
+    [['주소',data.address||'미제공'],['문의 전화',data.phone||'미제공']].forEach(([k,v])=>basics.append(el('dt','',k),el('dd','',stayText(v))));basic.append(basics);
     const facilities=staySection('주차 · 객실 · 이용 안내');const fields=el('dl','stay-fields');
-    data.fields.forEach(field=>fields.append(el('dt','',field.label),el('dd','',field.value)));facilities.append(fields);
+    data.fields.forEach(field=>fields.append(el('dt','',field.label),el('dd','',stayText(field.value))));facilities.append(fields);
     [['attractions','근처 볼거리'],['restaurants','근처 음식점']].forEach(([key,title])=>{
       const section=staySection(title), group=data.nearby[key];
-      section.append(el('p','data-note',group?.message||'정보 미제공'));
+      section.append(el('p','data-note',stayText(group?.message)));
       if(!group||!group.items.length){section.append(el('p','nearby-empty',group?.status==='live'?'반경 5km 안에 조회된 등록 정보가 없습니다.':group?.status==='no_coordinates'?'숙소 위치 좌표가 제공되지 않았습니다.':'주변 정보를 불러오지 못했습니다.'));return;}
       const list=el('ul','nearby-list');
-      group.items.forEach(item=>{const li=el('li');li.append(el('strong','',item.name));if(item.distance_m!==null){const distance=item.distance_m<1000?`${item.distance_m}m`:`${(item.distance_m/1000).toFixed(1)}km`;li.append(el('span','distance',`직선 약 ${distance}`));}li.append(el('p','',item.address||'주소 미제공'));list.append(li);});section.append(list);
+      group.items.forEach(item=>{const li=el('li');li.append(el('strong','',item.name));if(item.distance_m!==null){const distance=item.distance_m<1000?`${item.distance_m}m`:`${(item.distance_m/1000).toFixed(1)}km`;li.append(el('span','distance',`직선 약 ${distance}`));}li.append(el('p','',item.address||'등록된 주소가 없어요'));list.append(li);});section.append(list);
     });
     if(data.warnings.length){const warning=staySection('일부 정보 조회 안내');warning.append(el('p','',data.warnings.join(' · ')));}
-    const facts=$('#detail-facts');[['출처','한국관광공사 TourAPI'],['조회 시각',data.fetched_at],['공공데이터 수정시각',data.provider_modified_at||'미제공'],['최종 영업 확인일','별도 확인하지 않음']].forEach(([k,v])=>facts.append(el('dt','',k),el('dd','',v)));
+    const facts=$('#detail-facts');[['출처','한국관광공사 TourAPI'],['조회 시각',data.fetched_at],['공공데이터 수정시각',data.provider_modified_at||'미제공'],['최종 영업 확인일','별도 확인하지 않음']].forEach(([k,v])=>facts.append(el('dt','',k),el('dd','',stayText(v))));
     $('#stay-extra').append(el('p','data-note',data.message));
   }catch(error){
     if(request!==detailNumber||!dialog.open)return;
-    $('#detail-description').textContent=error.message&&error.message!=='Failed to fetch'?error.message:'숙소 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.';
+    $('#detail-description').textContent=error.message&&error.message!=='Failed to fetch'?stayText(error.message):'숙소 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.';
     const retry=el('button','outline-button','다시 불러오기');retry.addEventListener('click',()=>stayMore(p));$('#stay-extra').append(retry);
   }
 }
