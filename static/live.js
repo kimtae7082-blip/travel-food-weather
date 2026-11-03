@@ -1,7 +1,7 @@
 const $ = s => document.querySelector(s);
 const state = { category: 'all', region: '강원', audience: 'family', q: '', mode: 'live', page: 1 };
 const labels = { stay: '머무는 곳', scenery: '풍경·산책', food: '음식점' };
-let requestNumber = 0, weatherNumber = 0, hotelNumber = 0, detailNumber = 0;
+let requestNumber = 0, weatherNumber = 0, detailNumber = 0;
 function el(tag, cls, text) { const n = document.createElement(tag); if(cls) n.className=cls; if(text!==undefined) n.textContent=text; return n; }
 function link(url, label) {
   if(!url) return null;
@@ -45,7 +45,10 @@ function card(p) {
     article.addEventListener('keydown',event=>{if(event.target===article&&(event.key==='Enter'||event.key===' ')){event.preventDefault();details(p);}});
   }
   bottom.append(el('span','',p.is_demo?'예시 · 이용 조건 미확인':'출처: 한국관광공사'));if(p.category!=='stay')bottom.append(button);
-  if(p.category==='stay'){const more=el('button','outline-button stay-more','더보기');more.addEventListener('click',()=>stayMore(p));body.append(more);if(!p.is_demo){const app=link('https://www.agoda.com/ko-kr/','아고다 열기 ↗');if(app)body.append(app);}}
+  if(p.category==='stay'){
+    const more=el('button','outline-button stay-more','더보기');more.addEventListener('click',()=>stayMore(p));body.append(more);
+    if(!p.is_demo){const booking=link('https://www.agoda.com/ko-kr/','예약하기 ↗');booking.className='outline-button stay-booking';booking.setAttribute('aria-label',`${p.name} 예약하기 · 아고다 새 창`);booking.title='아고다에서 숙소명·날짜·인원을 검색해 예약하세요';const actions=el('div','stay-booking-row');actions.append(booking);body.append(actions,el('p','booking-note','아고다에서 숙소명·날짜·인원을 입력해 주세요.'));}
+  }
   body.append(bottom); article.append(picture,attribution,body); return article;
 }
 function details(p) {
@@ -53,7 +56,7 @@ function details(p) {
   $('#detail').classList.remove('stay-dialog');$('#stay-extra').hidden=true;$('#stay-extra').replaceChildren();
   $('#detail-name').textContent=p.name; $('#detail-description').textContent=p.description;
   const facts=$('#detail-facts'); facts.replaceChildren();
-  const rows=[['지역·주소',p.address||`${p.region} · ${p.city}`],['정보 구분',p.is_demo?'화면 확인용 예시 데이터':`${p.provider} 검색 결과 / 적합성 미검증`],['전화번호',p.phone||'미제공'],['영업·이용 상태',p.operating_status],['조회 시각',p.fetched_at||'미제공'],['최종 영업 확인일',p.checked_at||'별도 확인하지 않음'],['공공데이터 ID',p.content_id||'예시'],['공공데이터 수정시각',p.provider_modified_at||'미제공'],['가격·예약','아래 숙소 앱 연결에서 확인'],['사진',p.photo?.status==='available'?`한국관광공사 TourAPI 제공 / ${p.photo.license_label}`:'이용 가능한 사진 미제공'],['사진 촬영일','미제공 · 최신 사진 여부 미확인']];
+  const rows=[['지역·주소',p.address||`${p.region} · ${p.city}`],['정보 구분',p.is_demo?'화면 확인용 예시 데이터':`${p.provider} 검색 결과 / 적합성 미검증`],['전화번호',p.phone||'미제공'],['영업·이용 상태',p.operating_status],['조회 시각',p.fetched_at||'미제공'],['최종 영업 확인일',p.checked_at||'별도 확인하지 않음'],['공공데이터 ID',p.content_id||'예시'],['공공데이터 수정시각',p.provider_modified_at||'미제공'],['사진',p.photo?.status==='available'?`한국관광공사 TourAPI 제공 / ${p.photo.license_label}`:'이용 가능한 사진 미제공'],['사진 촬영일','미제공 · 최신 사진 여부 미확인']];
   rows.forEach(([k,v])=>facts.append(el('dt','',k),el('dd','',v)));
   if(!p.is_demo){
     const route=new URL('https://www.google.com/maps/dir/');route.searchParams.set('api','1');route.searchParams.set('destination',`${p.name} ${p.address||''}`.trim());
@@ -156,27 +159,15 @@ async function loadResults() {
   } catch {if(request!==requestNumber)return;$('#cards').replaceChildren();$('#error').hidden=false;$('#error').textContent='정보를 불러오지 못했어요. 서버 실행 상태를 확인한 뒤 여행 검색을 다시 눌러 주세요.';}
   finally {if(request===requestNumber)$('#cards').setAttribute('aria-busy','false');}
 }
-function invalidatePrices(){loadHotelLinks($('#region').value);}
-$('#search-form').addEventListener('submit',e=>{e.preventDefault();const previous=state.region;state.region=$('#region').value;state.audience=new FormData(e.currentTarget).get('audience');state.q=$('#keyword').value;state.page=1;loadResults();loadWeather();if(previous!==state.region)invalidatePrices();});
+$('#search-form').addEventListener('submit',e=>{e.preventDefault();state.region=$('#region').value;state.audience=new FormData(e.currentTarget).get('audience');state.q=$('#keyword').value;state.page=1;loadResults();loadWeather();});
 document.querySelectorAll('[data-category]').forEach(b=>b.addEventListener('click',()=>{state.category=b.dataset.category;state.page=1;document.querySelectorAll('[data-category]').forEach(n=>{n.classList.toggle('active',n===b);n.setAttribute('aria-pressed',String(n===b));});loadResults();}));
 document.querySelectorAll('[data-region]').forEach(b=>b.addEventListener('click',()=>{$('#region').value=b.dataset.region;$('#keyword').value='';$('#search-form').requestSubmit();}));
 $('#data-mode').addEventListener('change',()=>{state.mode=$('#data-mode').value;state.page=1;loadResults();});
 $('#next-page').addEventListener('click',()=>{state.page++;loadResults();});$('#previous-page').addEventListener('click',()=>{state.page--;loadResults();});
-$('#reset').addEventListener('click',()=>{state.category='all';state.region='전체';state.q='';state.page=1;$('#keyword').value='';$('#region').value='전체';document.querySelectorAll('[data-category]').forEach(b=>{b.classList.toggle('active',b.dataset.category==='all');b.setAttribute('aria-pressed',String(b.dataset.category==='all'));});loadResults();loadWeather();invalidatePrices();});
+$('#reset').addEventListener('click',()=>{state.category='all';state.region='전체';state.q='';state.page=1;$('#keyword').value='';$('#region').value='전체';document.querySelectorAll('[data-category]').forEach(b=>{b.classList.toggle('active',b.dataset.category==='all');b.setAttribute('aria-pressed',String(b.dataset.category==='all'));});loadResults();loadWeather();});
 $('.close').addEventListener('click',()=>$('#detail').close());$('.close-detail').addEventListener('click',()=>$('#detail').close());
-$('#region').addEventListener('change',invalidatePrices);
-async function copyText(text){
-  try {await navigator.clipboard.writeText(text);$('#price-message').textContent='검색어를 복사했습니다. 아고다에서 붙여넣고 날짜·인원을 입력해 주세요.';}
-  catch {$('#hotel-query').value=text;$('#hotel-query').focus();$('#hotel-query').select();$('#price-message').textContent='자동 복사가 되지 않았습니다. 선택된 검색어를 Ctrl+C로 복사하세요.';}
-}
-$('#copy-hotel-query').addEventListener('click',()=>copyText($('#hotel-query').value));
-async function loadHotelLinks(region){
-  const request=++hotelNumber;
-  try {const response=await fetch(`/api/hotel-links?region=${encodeURIComponent(region)}`);if(!response.ok)throw new Error();const data=await response.json();if(request!==hotelNumber)return;$('#hotel-query').value=data.query;$('#price-message').textContent=data.message;}
-  catch {if(request===hotelNumber)$('#price-message').textContent='안내를 불러오지 못했어요. 아고다에서 지역·날짜·인원을 직접 검색할 수 있습니다.';}
-}
 async function initialize(){
-  try{const response=await fetch('/api/regions');if(!response.ok)throw new Error();const data=await response.json();data.regions.forEach(r=>{const option=el('option','',r);option.value=r;$('#region').append(option);});$('#region').value=state.region;loadResults();loadWeather();loadHotelLinks(state.region);}
+  try{const response=await fetch('/api/regions');if(!response.ok)throw new Error();const data=await response.json();data.regions.forEach(r=>{const option=el('option','',r);option.value=r;$('#region').append(option);});$('#region').value=state.region;loadResults();loadWeather();}
   catch{$('#cards').replaceChildren();$('#error').hidden=false;$('#error').textContent='지역 목록을 불러오지 못했어요. 서버 실행 후 새로고침해 주세요.';$('#cards').setAttribute('aria-busy','false');}
   try{const response=await fetch('/api/status');if(!response.ok)throw new Error();const s=await response.json();$('#service-status').textContent=`OpenWeather ${s.weather==='configured'?'키 등록됨':'키 필요'} · TourAPI ${s.places==='configured'?'키 등록됨':'키 필요'}`;}
   catch{$('#service-status').textContent='연결 상태 확인 실패';}
