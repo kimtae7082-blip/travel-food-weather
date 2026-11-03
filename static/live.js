@@ -55,6 +55,11 @@ function details(p) {
   const facts=$('#detail-facts'); facts.replaceChildren();
   const rows=[['지역·주소',p.address||`${p.region} · ${p.city}`],['정보 구분',p.is_demo?'화면 확인용 예시 데이터':`${p.provider} 검색 결과 / 적합성 미검증`],['전화번호',p.phone||'미제공'],['영업·이용 상태',p.operating_status],['조회 시각',p.fetched_at||'미제공'],['최종 영업 확인일',p.checked_at||'별도 확인하지 않음'],['공공데이터 ID',p.content_id||'예시'],['공공데이터 수정시각',p.provider_modified_at||'미제공'],['가격·예약','아래 숙소 앱 연결에서 확인'],['사진',p.photo?.status==='available'?`한국관광공사 TourAPI 제공 / ${p.photo.license_label}`:'이용 가능한 사진 미제공'],['사진 촬영일','미제공 · 최신 사진 여부 미확인']];
   rows.forEach(([k,v])=>facts.append(el('dt','',k),el('dd','',v)));
+  if(!p.is_demo){
+    const route=new URL('https://www.google.com/maps/dir/');route.searchParams.set('api','1');route.searchParams.set('destination',`${p.name} ${p.address||''}`.trim());
+    const dd=el('dd'),directions=link(route.href,'길찾기 ↗');directions.className='nearby-directions';directions.setAttribute('aria-label',`${p.name} 길찾기 · Google 지도 새 창`);dd.append(directions,el('p','data-note','Google 지도에서 출발지를 입력하거나 변경하세요.'));facts.append(el('dt','','길찾기'),dd);
+  }
+
   const source=link(p.source_url,'공식 데이터 제공 안내 ↗');
   if(source){const dd=el('dd');dd.append(source);facts.append(el('dt','','출처'),dd);}
   if(p.photo?.status==='available'){
@@ -91,10 +96,10 @@ async function stayMore(p){
       const list=el('ul','nearby-list');
       group.items.forEach(item=>{
         const li=el('li','nearby-item'), media=el('div','nearby-media'), info=el('div','nearby-info'), photo=item.photo;
-        function fallback(){media.replaceChildren();const image=el('img');image.src='/static/landscape.svg';image.alt='대체 일러스트 · 실제 장소 사진 아님';media.append(image,el('span','nearby-photo-note','대체 일러스트'));}
+        function fallback(reason){media.replaceChildren();const image=el('img');image.src='/static/landscape.svg';image.alt='대체 일러스트 · 실제 장소 사진 아님';media.append(image,el('span','nearby-photo-note',`${reason||photo?.caption||'사진 미등록'} · 대체 일러스트`));}
         if(photo?.status==='available'&&photo.url){
           const image=el('img');image.src=photo.url;image.alt=`${item.name} 등록 사진 · 촬영일 미확인`;image.loading='lazy';image.referrerPolicy='no-referrer';
-          let alternative=false;image.addEventListener('error',()=>{if(!alternative&&photo.alternate_url&&photo.alternate_url!==photo.url){alternative=true;image.src=photo.alternate_url;}else fallback();});media.append(image);
+          let alternative=false;image.addEventListener('error',()=>{if(!alternative&&photo.alternate_url&&photo.alternate_url!==photo.url){alternative=true;image.src=photo.alternate_url;}else fallback('사진 연결 실패');});media.append(image);
           const credit=el('div','nearby-credit');const source=link(photo.source_url,'사진: 한국관광공사'),license=link(photo.license_url,photo.license_label);if(source)credit.append(source);if(license)credit.append(license);media.append(credit);
         }else fallback();
         info.append(el('strong','',item.name));
