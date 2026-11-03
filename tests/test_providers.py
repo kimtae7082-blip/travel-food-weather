@@ -155,6 +155,42 @@ class ProviderTests(unittest.TestCase):
         self.assertIsNone(providers.safe_link('javascript:alert(1)',['booking.com']))
         self.assertIsNone(providers.safe_link('https://booking.com.evil.example/',['booking.com']))
 
+    def test_place_photo_original_and_thumbnail_license(self):
+        for code in ('Type1','Type3'):
+            photo=providers.place_photo({'firstimage':'http://tong.visitkorea.or.kr/cms/original.jpg',
+                                        'firstimage2':'https://tong.visitkorea.or.kr/cms/thumb.jpg',
+                                        'cpyrhtDivCd':code})
+            self.assertEqual(photo['status'],'available')
+            self.assertEqual(photo['url'],'https://tong.visitkorea.or.kr/cms/original.jpg')
+            self.assertEqual(photo['alternate_url'],'https://tong.visitkorea.or.kr/cms/thumb.jpg')
+            self.assertIn('공공누리',photo['license_label'])
+            self.assertIsNone(photo['captured_at'])
+
+    def test_place_photo_missing_and_unapproved_license(self):
+        self.assertEqual(providers.place_photo({})['status'],'missing')
+        for code in ('', 'Type2','Type4','unknown'):
+            photo=providers.place_photo({'firstimage':'https://tong.visitkorea.or.kr/cms/a.jpg','cpyrhtDivCd':code})
+            self.assertEqual(photo['status'],'restricted')
+            self.assertIsNone(photo['url'])
+
+    def test_place_photo_rejects_unsafe_url_and_uses_same_place_thumbnail(self):
+        for url in ('javascript:alert(1)','https://tong.visitkorea.or.kr.evil.example/a.jpg',
+                    'https://user:password@tong.visitkorea.or.kr/a.jpg',
+                    'https://127.0.0.1/a.jpg','https://tong.visitkorea.or.kr:9999/a.jpg',
+                    'https://tong.visitkorea.or.kr:bad/a.jpg'):
+            photo=providers.place_photo({'firstimage':url,'cpyrhtDivCd':'Type3'})
+            self.assertIsNone(photo['url'])
+        photo=providers.place_photo({'firstimage':'https://unapproved.example/a.jpg',
+                                    'firstimage2':'http://tong.visitkorea.or.kr/cms/thumb.jpg','cpyrhtDivCd':'Type3'})
+        self.assertEqual(photo['url'],'https://tong.visitkorea.or.kr/cms/thumb.jpg')
+
+    def test_place_search_passes_photo_from_same_content(self):
+        record={**row('39','123'),'firstimage':'http://tong.visitkorea.or.kr/cms/123.jpg','cpyrhtDivCd':'Type3'}
+        with patch('providers.settings',return_value=CONFIG),patch('providers.request_json',return_value=tour_body([record])):
+            result=providers.search_places('전체','food','',1)
+        self.assertEqual(result['items'][0]['photo']['url'],'https://tong.visitkorea.or.kr/cms/123.jpg')
+        self.assertEqual(result['items'][0]['content_id'],'123')
+
     def test_http_error_does_not_expose_key(self):
         response=httpx.Response(401,request=httpx.Request('GET','https://example.com?appid=SECRET'),json={'error':'private'})
         with patch('providers.httpx.Client') as client:

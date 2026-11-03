@@ -90,6 +90,42 @@ def safe_link(value,domains):
     return None
 
 
+def place_photo(row):
+    """해당 콘텐츠의 대표 사진만 사용하며 촬영일을 추측하지 않습니다."""
+    license_code = str(row.get('cpyrhtDivCd') or '').strip()
+    raw_urls = [row.get('firstimage'), row.get('firstimage2')]
+    base = {'url': None, 'alternate_url': None, 'provider': '한국관광공사 TourAPI',
+            'source_url': TOUR_SOURCE, 'license_code': license_code or None,
+            'license_label': None, 'license_url': None, 'captured_at': None,
+            'status': 'missing', 'caption': '사진 미등록'}
+    if not any(raw_urls):
+        return base
+    if license_code not in ('Type1', 'Type3'):
+        return {**base, 'status': 'restricted', 'caption': '사진 이용 조건 확인 필요'}
+    urls = []
+    for value in raw_urls:
+        if not isinstance(value, str):
+            continue
+        try:
+            parsed = urlparse(value.strip())
+            if (parsed.scheme not in ('http', 'https')
+                    or parsed.hostname not in ('tong.visitkorea.or.kr', 'cdn.visitkorea.or.kr')
+                    or parsed.username or parsed.password or parsed.port not in (None, 80, 443)):
+                continue
+            url = parsed._replace(scheme='https', netloc=parsed.hostname).geturl()
+            if url not in urls:
+                urls.append(url)
+        except ValueError:
+            continue
+    if not urls:
+        return {**base, 'status': 'restricted', 'caption': '사진 주소 확인 필요'}
+    number = '1' if license_code == 'Type1' else '3'
+    return {**base, 'url': urls[0], 'alternate_url': urls[1] if len(urls) > 1 else None,
+            'status': 'available', 'caption': '제공기관 등록 사진 · 촬영일 미제공',
+            'license_label': f'공공누리 {number}유형',
+            'license_url': f'https://www.kogl.or.kr/info/licenseType{number}.do'}
+
+
 def weather(region):
     base={'region':region,'temperature':None,'valid_at':None,'fetched_at':None,'issued_at':None,
           'source_url':'https://openweathermap.org/','provider':'OpenWeather'}
@@ -187,7 +223,8 @@ def search_places(region,category,query,page):
                 'tags':'공공 관광정보·여행 유형 적합성 미검증','address':address,'phone':row.get('tel') or '미제공',
                 'provider':'한국관광공사 TourAPI','source_url':TOUR_SOURCE,'fetched_at':fetched,
                 'provider_modified_at':row.get('modifiedtime') or None,'checked_at':None,
-                'operating_status':'현재 영업 여부는 별도 확인 필요','is_demo':0})
+                'operating_status':'현재 영업 여부는 별도 확인 필요','is_demo':0,
+                'photo':place_photo(row)})
         return output,page*9<total
 
     categories=[category] if category!='all' else ['scenery','stay','food']

@@ -9,24 +9,53 @@ function link(url, label) {
   const n=el('a','',label); n.href=url; n.target='_blank'; n.rel='noopener noreferrer'; return n;
 }
 function card(p) {
-  const article=el('article','place-card'), picture=el('div',`card-picture ${p.category}`), image=el('img');
-  image.src='/static/landscape.svg'; image.alt=''; image.loading='lazy';
-  picture.append(image,el('span','category-badge',labels[p.category]),el('span','illustration-label','일러스트 · 현장 사진 아님'));
+  const article=el('article','place-card'), picture=el('div',`card-picture place-photo ${p.category}`);
+  const photo=p.photo;
+  const attribution=el('div','photo-attribution');
+  function placeholder(message){
+    picture.querySelector('img')?.remove(); picture.classList.add('photo-missing');
+    picture.querySelector('.photo-placeholder')?.remove();
+    picture.append(el('span','photo-placeholder',message));
+  }
+  if(!p.is_demo && photo?.status==='available' && photo.url){
+    const image=el('img'); image.alt=`${p.name} · 제공기관 등록 사진 (촬영일 미제공)`;
+    image.loading='lazy'; image.decoding='async'; image.referrerPolicy='no-referrer';
+    let usedAlternative=false;
+    image.addEventListener('error',()=>{
+      if(!usedAlternative && photo.alternate_url && photo.alternate_url!==photo.url){usedAlternative=true;image.src=photo.alternate_url;return;}
+      placeholder('사진을 불러오지 못했어요'); attribution.replaceChildren(el('span','','제공 사진 연결 실패 · 다른 장소 사진으로 대체하지 않습니다.'));
+    });
+    image.src=photo.url; picture.append(image);
+    const source=link(photo.source_url,'사진: 한국관광공사 TourAPI');
+    const license=link(photo.license_url,photo.license_label);
+    if(source)attribution.append(source);if(license)attribution.append(license);
+    attribution.append(el('span','','촬영일 미제공'));
+  }else{
+    placeholder(p.is_demo?'예시 데이터 · 실제 사진 없음':photo?.caption||'사진 미등록');
+    attribution.append(el('span','',p.is_demo?'실제 업체 사진이 아닌 예시입니다.':'이용 가능한 장소 사진이 제공되지 않았습니다.'));
+  }
+  picture.append(el('span','category-badge',labels[p.category]));
   const body=el('div','card-body');
   body.append(el('p','card-location',`${p.region} · ${p.city}`),el('h3','',p.name),el('p','card-description',p.description),el('p','card-tags',p.tags.split('·').map(t=>`#${t.trim()}`).join(' ')));
   const bottom=el('div','card-bottom'), button=el('button','detail-button','상세 정보 ↗');
   button.addEventListener('click',()=>details(p));
   bottom.append(el('span','',p.is_demo?'예시 · 이용 조건 미확인':'출처: 한국관광공사'),button);
   if(p.category==='stay'&&!p.is_demo){const copy=el('button','outline-button','숙소명 복사');copy.addEventListener('click',()=>copyText(p.name));body.append(copy);const app=link('https://www.agoda.com/ko-kr/','아고다 열기 ↗');if(app)body.append(app);}
-  body.append(bottom); article.append(picture,body); return article;
+  body.append(bottom); article.append(picture,attribution,body); return article;
 }
 function details(p) {
   $('#detail-name').textContent=p.name; $('#detail-description').textContent=p.description;
   const facts=$('#detail-facts'); facts.replaceChildren();
-  const rows=[['지역·주소',p.address||`${p.region} · ${p.city}`],['정보 구분',p.is_demo?'화면 확인용 예시 데이터':`${p.provider} 검색 결과 / 적합성 미검증`],['전화번호',p.phone||'미제공'],['영업·이용 상태',p.operating_status],['조회 시각',p.fetched_at||'미제공'],['최종 영업 확인일',p.checked_at||'별도 확인하지 않음'],['공공데이터 ID',p.content_id||'예시'],['공공데이터 수정시각',p.provider_modified_at||'미제공'],['가격·예약','아래 숙소 앱 연결에서 확인'],['이미지','직접 제작한 일러스트 / 현장 사진 아님']];
+  const rows=[['지역·주소',p.address||`${p.region} · ${p.city}`],['정보 구분',p.is_demo?'화면 확인용 예시 데이터':`${p.provider} 검색 결과 / 적합성 미검증`],['전화번호',p.phone||'미제공'],['영업·이용 상태',p.operating_status],['조회 시각',p.fetched_at||'미제공'],['최종 영업 확인일',p.checked_at||'별도 확인하지 않음'],['공공데이터 ID',p.content_id||'예시'],['공공데이터 수정시각',p.provider_modified_at||'미제공'],['가격·예약','아래 숙소 앱 연결에서 확인'],['사진',p.photo?.status==='available'?`한국관광공사 TourAPI 제공 / ${p.photo.license_label}`:'이용 가능한 사진 미제공'],['사진 촬영일','미제공 · 최신 사진 여부 미확인']];
   rows.forEach(([k,v])=>facts.append(el('dt','',k),el('dd','',v)));
   const source=link(p.source_url,'공식 데이터 제공 안내 ↗');
   if(source){const dd=el('dd');dd.append(source);facts.append(el('dt','','출처'),dd);}
+  if(p.photo?.status==='available'){
+    const original=link(p.photo.url,'제공 원본 사진 열기 ↗');
+    const license=link(p.photo.license_url,p.photo.license_label);
+    if(original){const dd=el('dd');dd.append(original);facts.append(el('dt','','원본 사진'),dd);}
+    if(license){const dd=el('dd');dd.append(license);facts.append(el('dt','','사진 이용 조건'),dd);}
+  }
   $('#detail').showModal();
 }
 async function loadWeather() {
