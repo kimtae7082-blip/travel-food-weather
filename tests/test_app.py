@@ -67,6 +67,13 @@ class TravelTests(unittest.TestCase):
         self.assertEqual(data['query'],'강릉 숙소')
         self.assertEqual(self.client.get('/api/hotel-links?region=wrong').status_code,422)
 
+    def test_stay_detail_id_validation_and_missing_key(self):
+        for ident in ('abc','1234567890123','１２３'):
+            self.assertEqual(self.client.get('/api/stays/'+ident).status_code,422)
+        with patch('providers.settings',return_value={'TOUR_API_KEY':''}):
+            result=self.client.get('/api/stays/123').json()
+        self.assertEqual(result['status'],'needs_key')
+
     def test_hotel_input_validation(self):
         for query in ["checkin=2020-01-01&checkout=2020-01-02", "checkin=bad&checkout=bad",
                       "checkin=2027-01-01&checkout=2027-01-01"]:

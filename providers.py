@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 import hashlib
 import math
 import os
+from html.parser import HTMLParser
 from pathlib import Path
 from time import monotonic
 from urllib.parse import urlparse, unquote
@@ -38,6 +39,7 @@ TOUR_BASE = 'https://apis.data.go.kr/B551011/KorService2'
 TOUR_SOURCE = 'https://www.data.go.kr/data/15101578/openapi.do'
 _weather_cache = {}
 _region_cache = {}
+_stay_cache = {}
 
 
 def now():
@@ -247,6 +249,109 @@ def hotel_app_links(region,query=''):
     return {'status':'external_app','query':query.strip() or f'{city} 숙소',
             'links':[{'name':'아고다 열기','url':'https://www.agoda.com/ko-kr/'}],
             'message':'검색어를 복사한 뒤 아고다에서 검색해 주세요. 날짜·인원·가격은 아고다에서 직접 확인합니다. 자동 전송·가격 조회·예약·결제는 하지 않습니다.'}
+
+
+class PlainText(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts=[]
+        self.hidden=0
+
+    def handle_starttag(self,tag,attrs):
+        if tag in ('script','style'):self.hidden+=1
+        if tag in ('br','p','div','li'):self.parts.append('\n')
+
+    def handle_endtag(self,tag):
+        if tag in ('script','style'):self.hidden=max(0,self.hidden-1)
+        if tag in ('p','div','li'):self.parts.append('\n')
+
+    def handle_data(self,data):
+        if not self.hidden:self.parts.append(data)
+
+
+def plain_text(value):
+    if value is None:return ''
+    parser=PlainText()
+    parser.feed(str(value))
+    return '\n'.join(line.strip() for line in ''.join(parser.parts).splitlines() if line.strip())
+
+
+def stay_details(content_id):
+    key=settings()['TOUR_API_KEY']
+    if not key:
+        return {'status':'needs_key','message':'TourAPI 인증키를 등록해 주세요.'}
+    cache_key=(content_id,hashlib.sha256(key.encode()).hexdigest())
+    cached=_stay_cache.get(cache_key)
+    if cached and monotonic()-cached[0]<600:return cached[1]
+    try:
+        common_rows,_=tour_request('detailCommon2',key,contentId=content_id)
+        if not common_rows:return {'status':'not_found','message':'숙소 상세 정보가 제공되지 않았습니다.'}
+        common=common_rows[0]
+        if str(common.get('contentid'))!=content_id or str(common.get('contenttypeid'))!='32':
+            return {'status':'not_found','message':'숙박 콘텐츠로 확인되지 않은 정보입니다.'}
+    except (ProviderError,TypeError,KeyError,ValueError):
+        return {'status':'unavailable','message':'숙소 정보를 불러오지 못했어요. 잠시 후 더보기를 다시 눌러 주세요.'}
+
+    def intro():
+        rows,_=tour_request('detailIntro2',key,contentId=content_id,contentTypeId='32')
+        if not rows:return {}
+        if str(rows[0].get('contentid'))!=content_id:raise ProviderError('숙소 정보가 일치하지 않습니다.')
+        return rows[0]
+
+    coordinates=None
+    try:
+        lon,lat=float(common.get('mapx')),float(common.get('mapy'))
+        if math.isfinite(lon) and math.isfinite(lat) and 124<=lon<=132 and 33<=lat<=39:
+            coordinates=(lon,lat)
+    except (TypeError,ValueError):pass
+
+    def nearby(kind):
+        if not coordinates:
+            return {'status':'no_coordinates','items':[],'message':'위치 좌표가 없어 주변 정보를 조회하지 못했습니다.'}
+        rows,_=tour_request('locationBasedList2',key,mapX=coordinates[0],mapY=coordinates[1],
+                           radius=5000,contentTypeId=kind,arrange='E',numOfRows=6)
+        items=[]
+        for row in rows:
+            ident=str(row.get('contentid',''))
+            if ident==content_id or not row.get('title'):continue
+            distance=None
+            try:
+                number=float(row.get('dist'))
+                if math.isfinite(number) and number>=0:distance=round(number)
+            except (ValueError,TypeError):pass
+            items.append({'name':plain_text(row['title']),'address':plain_text(row.get('addr1')),
+                          'distance_m':distance,'content_id':ident,
+                          'source_url':TOUR_SOURCE})
+        return {'status':'live','items':items,'message':'반경 5km 등록 정보 · 직선거리 기준, 도보·차량 이동거리 아님'}
+
+    warnings=[];info={};groups={}
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        tasks={'intro':executor.submit(intro),'attractions':executor.submit(nearby,'12'),
+               'restaurants':executor.submit(nearby,'39')}
+        for name,task in tasks.items():
+            try:
+                value=task.result()
+                if name=='intro':info=value
+                else:groups[name]=value
+            except (ProviderError,TypeError,KeyError,ValueError):
+                warnings.append('시설·이용 안내 조회 실패' if name=='intro' else '주변 볼거리 조회 실패' if name=='attractions' else '주변 음식점 조회 실패')
+                if name!='intro':groups[name]={'status':'unavailable','items':[],'message':'일시적으로 정보를 불러오지 못했습니다.'}
+    fields=[('주차','parkinglodging'),('체크인','checkintime'),('체크아웃','checkouttime'),
+            ('객실 종류','roomtype'),('객실 수','roomcount'),('수용 인원','accomcountlodging'),
+            ('취사 안내','chkcooking'),('식음료 시설','foodplace'),('부대시설','subfacility'),
+            ('픽업 안내','pickup'),('예약 문의','reservationlodging'),('환불 규정','refundregulation')]
+    result={'status':'partial' if warnings else 'live','content_id':content_id,
+            'name':plain_text(common.get('title')),'overview':plain_text(common.get('overview')) or '숙소 소개 미제공',
+            'address':' '.join(filter(None,[plain_text(common.get('addr1')),plain_text(common.get('addr2'))])),
+            'phone':plain_text(info.get('infocenterlodging') or common.get('tel')) or '미제공',
+            'fields':[{'label':label,'value':plain_text(info.get(field)) or '미제공'} for label,field in fields],
+            'nearby':groups,'warnings':warnings,'provider':'한국관광공사 TourAPI','source_url':TOUR_SOURCE,
+            'fetched_at':now(),'provider_modified_at':common.get('modifiedtime') or None,
+            'checked_at':None,'message':'제공기관 등록 정보입니다. 주차 요금·시설 운영·예약 조건은 방문 전 숙소에 확인하세요.'}
+    if not warnings:
+        if len(_stay_cache)>100:_stay_cache.clear()
+        _stay_cache[cache_key]=(monotonic(),result)
+    return result
 
 
 def hotel_prices(region,checkin,checkout,adults,children):

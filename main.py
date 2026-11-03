@@ -132,6 +132,13 @@ def hotel_links(region: str = Query(default="강원", max_length=20), q: str = Q
     return providers.hotel_app_links(region, q)
 
 
+@app.get("/api/stays/{content_id}")
+def stay_details(content_id: str):
+    if not content_id.isascii() or not content_id.isdigit() or len(content_id)>12:
+        raise HTTPException(422, "올바른 숙소 정보 ID가 필요합니다.")
+    return providers.stay_details(content_id)
+
+
 @app.get("/api/hotel-prices")
 def hotel_prices(
     checkin: date, checkout: date,
