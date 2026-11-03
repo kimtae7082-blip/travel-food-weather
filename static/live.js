@@ -87,8 +87,23 @@ async function stayMore(p){
       const section=staySection(title), group=data.nearby[key];
       section.append(el('p','data-note',stayText(group?.message)));
       if(!group||!group.items.length){section.append(el('p','nearby-empty',group?.status==='live'?'반경 5km 안에 조회된 등록 정보가 없습니다.':group?.status==='no_coordinates'?'숙소 위치 좌표가 제공되지 않았습니다.':'주변 정보를 불러오지 못했습니다.'));return;}
+      section.append(el('p','data-note','길찾기는 숙소를 출발지로 Google 지도에서 열립니다. 사진 촬영일과 최신 여부는 확인되지 않았습니다.'));
       const list=el('ul','nearby-list');
-      group.items.forEach(item=>{const li=el('li');li.append(el('strong','',item.name));if(item.distance_m!==null){const distance=item.distance_m<1000?`${item.distance_m}m`:`${(item.distance_m/1000).toFixed(1)}km`;li.append(el('span','distance',`직선 약 ${distance}`));}li.append(el('p','',item.address||'등록된 주소가 없어요'));list.append(li);});section.append(list);
+      group.items.forEach(item=>{
+        const li=el('li','nearby-item'), media=el('div','nearby-media'), info=el('div','nearby-info'), photo=item.photo;
+        function fallback(){media.replaceChildren();const image=el('img');image.src='/static/landscape.svg';image.alt='대체 일러스트 · 실제 장소 사진 아님';media.append(image,el('span','nearby-photo-note','대체 일러스트'));}
+        if(photo?.status==='available'&&photo.url){
+          const image=el('img');image.src=photo.url;image.alt=`${item.name} 등록 사진 · 촬영일 미확인`;image.loading='lazy';image.referrerPolicy='no-referrer';
+          let alternative=false;image.addEventListener('error',()=>{if(!alternative&&photo.alternate_url&&photo.alternate_url!==photo.url){alternative=true;image.src=photo.alternate_url;}else fallback();});media.append(image);
+          const credit=el('div','nearby-credit');const source=link(photo.source_url,'사진: 한국관광공사'),license=link(photo.license_url,photo.license_label);if(source)credit.append(source);if(license)credit.append(license);media.append(credit);
+        }else fallback();
+        info.append(el('strong','',item.name));
+        if(item.distance_m!==null){const distance=item.distance_m<1000?`${item.distance_m}m`:`${(item.distance_m/1000).toFixed(1)}km`;info.append(el('span','distance',`직선 약 ${distance}`));}
+        info.append(el('p','',item.address||'등록된 주소가 없어요'));
+        const route=new URL('https://www.google.com/maps/dir/');route.searchParams.set('api','1');route.searchParams.set('origin',`${data.name||p.name} ${data.address||p.address||''}`.trim());route.searchParams.set('destination',`${item.name} ${item.address||''}`.trim());
+        const directions=link(route.href,'길찾기 ↗');directions.className='nearby-directions';directions.setAttribute('aria-label',`숙소에서 ${item.name}까지 길찾기 · Google 지도 새 창`);info.append(directions);
+        li.append(media,info);list.append(li);
+      });section.append(list);
     });
     if(data.warnings.length){const warning=staySection('일부 정보 조회 안내');warning.append(el('p','',data.warnings.join(' · ')));}
     const facts=$('#detail-facts');[['출처','한국관광공사 TourAPI'],['조회 시각',data.fetched_at],['공공데이터 수정시각',data.provider_modified_at||'미제공'],['최종 영업 확인일','별도 확인하지 않음']].forEach(([k,v])=>facts.append(el('dt','',k),el('dd','',stayText(v))));

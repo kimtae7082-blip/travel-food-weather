@@ -320,7 +320,7 @@ def stay_details(content_id):
                 if math.isfinite(number) and number>=0:distance=round(number)
             except (ValueError,TypeError):pass
             items.append({'name':plain_text(row['title']),'address':plain_text(row.get('addr1')),
-                          'distance_m':distance,'content_id':ident,
+                          'distance_m':distance,'content_id':ident,'photo':place_photo(row),
                           'source_url':TOUR_SOURCE})
         return {'status':'live','items':items,'message':'반경 5km 등록 정보 · 직선거리 기준, 도보·차량 이동거리 아님'}
 

@@ -30,7 +30,7 @@ class ProviderTests(unittest.TestCase):
             calls.append((endpoint,params))
             if endpoint=='detailCommon2':return ([{'contentid':'123','contenttypeid':'32','title':'테스트 숙소','overview':'소개<br>둘째 줄<script>bad()</script>','mapx':'128','mapy':'37','addr1':'주소'}],1)
             if endpoint=='detailIntro2':return ([{'contentid':'123','parkinglodging':'가능','checkintime':'15:00','checkouttime':'11:00','roomtype':'온돌','subfacility':'세미나실'}],1)
-            return ([{'contentid':'555','title':'주변 관광지' if params['contentTypeId']=='12' else '주변 음식점','dist':'1234.5','addr1':'주변 주소'}],1)
+            return ([{'contentid':'555','title':'주변 관광지' if params['contentTypeId']=='12' else '주변 음식점','dist':'1234.5','addr1':'주변 주소','firstimage':'https://tong.visitkorea.or.kr/cms/nearby.jpg','cpyrhtDivCd':'Type1'}],1)
         with patch('providers.settings',return_value=CONFIG),patch('providers.tour_request',side_effect=request):
             first=providers.stay_details('123');second=providers.stay_details('123')
         self.assertEqual(first,second);self.assertEqual(len(calls),4)
@@ -39,6 +39,8 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(fields['취사 안내'],'미제공')
         self.assertEqual(first['overview'],'소개\n둘째 줄')
         self.assertEqual(first['nearby']['attractions']['items'][0]['distance_m'],1234)
+        self.assertEqual(first['nearby']['restaurants']['items'][0]['photo']['status'],'available')
+        self.assertEqual(first['nearby']['restaurants']['items'][0]['photo']['url'],'https://tong.visitkorea.or.kr/cms/nearby.jpg')
         self.assertIsNone(first['checked_at'])
         self.assertTrue(all(p['radius']==5000 for endpoint,p in calls if endpoint=='locationBasedList2'))
         self.assertNotIn(CONFIG['TOUR_API_KEY'],str(first))
